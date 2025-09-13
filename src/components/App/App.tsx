@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import ReactPaginate from 'react-paginate';
+import toast, { Toaster } from 'react-hot-toast';
 
 import SearchBar from '../SearchBar/SearchBar';
 import MovieGrid from '../MovieGrid/MovieGrid';
@@ -9,59 +12,71 @@ import MovieModal from '../MovieModal/MovieModal';
 import type { Movie } from '../../types/movie';
 import { fetchMovies } from '../../services/movieService';
 
-import toast, { Toaster } from 'react-hot-toast';
-
 import css from './App.module.css';
 
 export default function App() {
-  const [movies, setMovies] = useState<Movie[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [searchValue, setSearchValue] = useState('');
+  const [page, setPage] = useState(1);
 
-  const handleSearch = async (searchValue: string) => {
-    try {
-      setError(false);
-      setIsLoading(true);
-      const data = await fetchMovies(searchValue);
-      if (data.results.length === 0) {
-        toast.error('No movies found for your request.');
-        setMovies([]);
-        return;
-      }
-      setMovies(data.results);
-    } catch {
-      setError(true);
-    } finally {
-      setIsLoading(false);
+  // відповідь useQuery типізуємо в тій функції, яку їй передаємо.
+  // В даному випадку - у fetchMovies
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['movies', searchValue, page],
+    queryFn: () => fetchMovies(searchValue, page),
+    enabled: !!searchValue,
+  });
+
+  const handleSearch = (value: string) => {
+    if (!value.trim()) {
+      toast.error('Please enter your search query.');
+      return;
     }
+    setSearchValue(value);
+    setPage(1);
   };
 
-  const handleSelectMovie = (movie: Movie) => {
-    setSelectedMovie(movie);
-  };
+  const movies = data?.results ?? [];
 
-  const handleCloseModal = () => {
-    setSelectedMovie(null);
-  };
+  useEffect(() => {
+    if (!isLoading && searchValue && movies.length === 0) {
+      toast.error('No movies found for your request.');
+    }
+  }, [isLoading, searchValue, movies.length]);
 
   return (
-    <>
-      <div className={css.app}>
-        <SearchBar onSubmit={handleSearch} />
-        <Toaster position="top-center" />
+    <div className={css.app}>
+      <SearchBar onSubmit={handleSearch} />
+      <Toaster position="top-center" />
 
-        {isLoading && <Loader />}
-        {error && <ErrorMessage />}
+      {isLoading && <Loader />}
+      {isError && <ErrorMessage />}
 
-        {!isLoading && !error && movies.length > 0 && (
-          <MovieGrid movies={movies} onSelect={handleSelectMovie} />
-        )}
+      {data && data.total_pages > 1 && (
+        <ReactPaginate
+          pageCount={data.total_pages}
+          pageRangeDisplayed={5}
+          marginPagesDisplayed={1}
+          onPageChange={({ selected }) => setPage(selected + 1)}
+          forcePage={page - 1}
+          containerClassName={css.pagination}
+          activeClassName={css.active}
+          nextLabel="→"
+          previousLabel="←"
+        />
+      )}
 
-        {selectedMovie && (
-          <MovieModal movie={selectedMovie} onClose={handleCloseModal} />
-        )}
-      </div>
-    </>
+      {!isLoading && !isError && movies.length > 0 && (
+        <MovieGrid movies={movies} onSelect={setSelectedMovie} />
+      )}
+
+      {selectedMovie && (
+        <MovieModal
+          movie={selectedMovie}
+          onClose={() => setSelectedMovie(null)}
+        />
+      )}
+    </div>
   );
 }
