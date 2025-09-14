@@ -26,6 +26,7 @@ export default function App() {
     queryKey: ['movies', searchValue, page],
     queryFn: () => fetchMovies(searchValue, page),
     enabled: !!searchValue,
+    placeholderData: (previousData) => previousData,
   });
 
   const handleSearch = (value: string) => {
